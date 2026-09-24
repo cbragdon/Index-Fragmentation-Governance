@@ -1,0 +1,7 @@
+.vs/
+.vscode/
+*.log
+*.tmp
+*.bak
+*.sqlcmd.out
+.env
