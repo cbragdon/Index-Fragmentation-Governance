@@ -26,7 +26,7 @@ The caller needs visibility into the selected databases, `VIEW DATABASE STATE` t
 
 ### Install Stats Governance for post-reorganize statistics updates
 
-An index rebuild refreshes its own index statistic, but an index reorganize does not. To let this process evaluate and update eligible index statistics after a successful reorganize, separately install [Stats Governance](https://github.com/cbragdon/StatsGovernance). This repository does not install its objects.
+An index rebuild refreshes its own index statistic, but an index reorganize does not. To let this process evaluate and update eligible index statistics after a successful reorganize, separately install [Stats Governance](https://github.com/cbragdon/StatsGovernance). This repository does not install its objects. The defrag installer checks accessible online databases for the targeted Stats Governance procedure and prints its repository URL when it cannot find one. The installer still completes because the handoff is optional; requesting `RECOMMEND` or `ENFORCE` later requires the procedure in the database named by `@StatsGovernanceDatabase`.
 
 1. Clone the Stats Governance repository and follow its [installation instructions](https://github.com/cbragdon/StatsGovernance#install). Choose an existing utility database, such as `DBAdmin` (the Stats Governance example database), at compatibility level 110 or higher. From a directory where you want the repository, for example:
 

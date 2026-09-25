@@ -21,7 +21,7 @@ This repository contains source and examples for `dbo.usp_DefragIndexes`. Instal
 
 4. Set `@Execute = 1` only for the scope you intend to maintain. The default is preview only.
 
-For statistics updates after a reorganize, first install [Stats Governance](https://github.com/cbragdon/StatsGovernance) in a utility database using its [installation instructions](https://github.com/cbragdon/StatsGovernance#install). Verify that `dbo.usp_DRE_StatsGovernanceTargeted_v1` exists there, then pass that database as `@StatsGovernanceDatabase`. `RECOMMEND` reports decisions only; `ENFORCE` may update eligible index statistics subject to that engine's approval and eligibility rules. With the default mode `NONE`, no handoff occurs. Rebuilds refresh their own index statistics without Stats Governance. No Stats Governance objects are installed by this repository.
+For statistics updates after a reorganize, first install [Stats Governance](https://github.com/cbragdon/StatsGovernance) in a utility database using its [installation instructions](https://github.com/cbragdon/StatsGovernance#install). Verify that `dbo.usp_DRE_StatsGovernanceTargeted_v1` exists there, then pass that database as `@StatsGovernanceDatabase`. `RECOMMEND` reports decisions only; `ENFORCE` may update eligible index statistics subject to that engine's approval and eligibility rules. With the default mode `NONE`, no handoff occurs. Rebuilds refresh their own index statistics without Stats Governance. No Stats Governance objects are installed by this repository. The defrag installer reports whether it can find the targeted procedure in an accessible online database and prints the repository URL when it cannot; this check does not block installation.
 
 ## GitHub publication
 

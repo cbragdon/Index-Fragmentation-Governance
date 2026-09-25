@@ -42,7 +42,7 @@ BEGIN
     IF @StatsGovernanceMode <> 'NONE'
        AND OBJECT_ID(QUOTENAME(@StatsGovernanceDatabase)
            + N'.dbo.usp_DRE_StatsGovernanceTargeted_v1', N'P') IS NULL
-        THROW 50015, 'The selected statistics governance database lacks dbo.usp_DRE_StatsGovernanceTargeted_v1.', 1;
+        THROW 50015, 'Stats Governance targeted procedure not found in the selected database. Install it from https://github.com/cbragdon/StatsGovernance or select the correct utility database.', 1;
 
     CREATE TABLE #Scope
     (
@@ -419,4 +419,18 @@ BEGIN
     FROM #StatsWork
     ORDER BY database_name, schema_name, table_name;
 END;
+GO
+/* The statistics handoff is optional, so this installation check is informational. */
+IF EXISTS
+(
+    SELECT 1
+    FROM sys.databases AS d
+    WHERE d.state_desc = 'ONLINE'
+      AND HAS_DBACCESS(d.name) = 1
+      AND OBJECT_ID(QUOTENAME(d.name)
+          + N'.dbo.usp_DRE_StatsGovernanceTargeted_v1', N'P') IS NOT NULL
+)
+    PRINT N'Stats Governance targeted procedure found on this instance.';
+ELSE
+    PRINT N'Stats Governance targeted procedure was not found. To enable statistics updates after reorganize, install https://github.com/cbragdon/StatsGovernance';
 GO
