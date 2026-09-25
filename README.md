@@ -6,11 +6,11 @@ This process helps a DBA maintain SQL Server rowstore indexes when their pages h
 
 ## Why choose page fullness or page link fragmentation?
 
-- **Page fullness** (`PAGE_FULLNESS`) asks how much of each index page contains data. Choose it when low fullness makes the same data occupy more pages. More pages can mean more reads and more memory to cache them, even when the pages are in order. For example, an index that is 70% full with 2% link fragmentation has a fullness issue. This process rebuilds an index that qualifies on fullness.
+- **Page fullness** (`PAGE_FULLNESS`) asks how much of each index page contains data. Choose it when low fullness makes the same data occupy more pages. More pages can mean more reads and more memory to cache them, even when the pages are in order. For example, an index that is 70% full with 2% link fragmentation has a fullness issue. This process reorganizes an index that qualifies on fullness.
 - **Page link fragmentation** (`PAGE_LINK`) asks whether leaf pages follow the index's logical key order. Choose it when an important workload scans many pages or reads key ranges and out-of-order pages may reduce efficient read-ahead. For example, an index that is 95% full with 20% link fragmentation has a page-order issue. This process reorganizes at moderate fragmentation and rebuilds at higher fragmentation.
 Choose one criterion for each run. To investigate both conditions, preview or run the procedure separately with each choice.
 
-“Page link fragmentation” means out-of-order pages; it does not mean damaged page pointers. By default, a fullness run qualifies an index partition whose average page fullness is below 80%. A link run reorganizes at 5% through 30% logical fragmentation and rebuilds above 30%. These are configurable process settings, not universal performance targets. [Paul Randal explains](https://www.sqlskills.com/blogs/paul/where-do-the-books-online-index-fragmentation-thresholds-come-from/) that he chose the historical 5% and 30% fragmentation guidance after talking with customers and experimenting; he intended those numbers as general starting points that can vary by workload. The 80% page-fullness default is a separate, configurable choice for this process; Paul's article does not prescribe a fullness threshold. A percentage alone does not prove that maintenance will help: compare the before and after measurements and the performance of the queries that use the index. Microsoft notes that low page density often has a greater impact than fragmentation, while fragmentation mainly affects large scans. See [Microsoft's index maintenance guidance](https://learn.microsoft.com/en-us/sql/relational-databases/indexes/reorganize-and-rebuild-indexes?view=sql-server-ver17).
+“Page link fragmentation” means out-of-order pages; it does not mean damaged page pointers. By default, a fullness run qualifies an index partition whose average page fullness is below 90%. A link run reorganizes at 5% through 30% logical fragmentation and rebuilds above 30%. These are configurable process settings, not universal performance targets. [Paul Randal explains](https://www.sqlskills.com/blogs/paul/where-do-the-books-online-index-fragmentation-thresholds-come-from/) that he chose the historical 5% and 30% fragmentation guidance after talking with customers and experimenting; he intended those numbers as general starting points that can vary by workload. The 90% page-fullness default is a separate, configurable choice for this process; Paul's article does not prescribe a fullness threshold. A percentage alone does not prove that maintenance will help: compare the before and after measurements and the performance of the queries that use the index. Microsoft notes that low page density often has a greater impact than fragmentation, while fragmentation mainly affects large scans. See [Microsoft's index maintenance guidance](https://learn.microsoft.com/en-us/sql/relational-databases/indexes/reorganize-and-rebuild-indexes?view=sql-server-ver17).
 
 `sql/usp_DefragIndexes.sql` installs `dbo.usp_DefragIndexes` in an administration database. It scans online, writable user databases on the current SQL Server instance and plans maintenance for rowstore index partitions. It excludes system databases, snapshots, heaps, columnstore indexes, disabled indexes, and small partitions.
 
@@ -74,17 +74,17 @@ Set the required `@Criterion` to either `PAGE_FULLNESS` or `PAGE_LINK`. The proc
 
 | Criterion | Qualifies when | Planned action |
 | --- | --- | --- |
-| `PAGE_FULLNESS` | Average page space used is below `@MinPageFullness` (default 80%) | Rebuild |
+| `PAGE_FULLNESS` | Average page space used is below `@MinPageFullness` (default 90%) | Reorganize; rebuild if page locks are disabled |
 | `PAGE_LINK` | Logical fragmentation is at least `@MinLinkFragmentation` (reorganize threshold, default 5%) | Reorganize through `@RebuildAtFragmentation` (default 30%); rebuild above it |
 
-`PAGE_LINK` uses two configurable parameters: `@MinLinkFragmentation` starts reorganization, and `@RebuildAtFragmentation` sets the boundary above which the action becomes a rebuild. It is SQL Server's logical page order fragmentation, reported as `avg_fragmentation_in_percent`. Page fullness is `avg_page_space_used_in_percent`. A partition must also have at least `@MinPageCount` pages (default 1,000). This gate applies before either `PAGE_LINK` action and before a `PAGE_FULLNESS` rebuild. Paul's small-index guidance specifically discussed indexes under 1,000 pages that are already in memory; this procedure uses page count without measuring cache residency. An index with a configured fill factor below `@MinPageFullness` is exempt from the fullness test because rebuilding it preserves that fill factor and would predictably leave it below the requested target. Indexes that disallow page locks are rebuilt instead of reorganized.
+`PAGE_LINK` uses two configurable parameters: `@MinLinkFragmentation` starts reorganization, and `@RebuildAtFragmentation` sets the boundary above which the action becomes a rebuild. It is SQL Server's logical page order fragmentation, reported as `avg_fragmentation_in_percent`. Page fullness is `avg_page_space_used_in_percent`, an average for the index partition rather than a test of every individual page. A partition must also have at least `@MinPageCount` pages (default 1,000). This gate applies before either `PAGE_LINK` action and before a `PAGE_FULLNESS` reorganize. Paul's small-index guidance specifically discussed indexes under 1,000 pages that are already in memory; this procedure uses page count without measuring cache residency. An index with a configured fill factor below `@MinPageFullness` is exempt from the fullness test because reorganization honors that fill factor and would predictably leave it below the requested target. Indexes that disallow page locks are rebuilt instead of reorganized.
 
 ```sql
 -- Preview indexes with low page fullness in one database.
 EXEC dbo.usp_DefragIndexes
     @Targets = N'[{"database":"Sales"}]',
     @Criterion = 'PAGE_FULLNESS',
-    @MinPageFullness = 80;
+    @MinPageFullness = 90;
 
 -- Preview indexes with out-of-order pages in one table.
 EXEC dbo.usp_DefragIndexes
@@ -127,7 +127,7 @@ EXEC dbo.usp_DefragIndexes
 
 ## Test and compare before and after
 
-The [AdventureWorks2019 example](tests/before_after_AdventureWorks2019.sql) creates a dedicated demo table, generates page fragmentation and low page fullness, previews each criterion, executes each action, and returns a side-by-side comparison of page count, fullness, link fragmentation, and the index statistic's last update time. The page-link step asks the real `DBAdmin` Stats Governance installation for `RECOMMEND` results; it does not force a statistics update. It leaves the demo table in place for inspection and includes an optional cleanup command at the end. The example expects the latest defrag procedure in `StatsGovernanceTest`; replace that database name if you installed it elsewhere.
+The [AdventureWorks2019 example](tests/before_after_AdventureWorks2019.sql) creates a dedicated demo table, generates page fragmentation and low page fullness, previews each criterion, executes each action, and returns a side-by-side comparison of page count, fullness, link fragmentation, and the index statistic's last update time. The fullness step uses the default 90% threshold and reorganizes its qualifying index. The page-link step asks the real `DBAdmin` Stats Governance installation for `RECOMMEND` results; it does not force a statistics update. It leaves the demo table in place for inspection and includes an optional cleanup command at the end. The example expects the latest defrag procedure in `StatsGovernanceTest`; replace that database name if you installed it elsewhere.
 
 ```powershell
 sqlcmd -S YourServer -d StatsGovernanceTest -E -b -i .\sql\usp_DefragIndexes.sql
@@ -136,4 +136,4 @@ sqlcmd -S YourServer -d AdventureWorks2019 -E -b -i .\tests\before_after_Adventu
 
 For a smaller test on an existing AdventureWorks2019 index, [the smoke test](tests/AdventureWorks2019_smoke.sql) previews and executes both criteria on `Production.TransactionHistoryArchive`. [Scope previews](tests/scope_preview.sql) cover table, database, and instance selectors without changing indexes.
 
-The [local validation record](docs/LOCAL_TEST_RESULTS_20260924.md) captures the before-and-after measurements and the Stats Governance RunID from the dedicated demo.
+The [90% default validation record](docs/LOCAL_TEST_RESULTS_20260925.md) captures a live `PAGE_FULLNESS` reorganization and its before-and-after measurements. The [earlier validation record](docs/LOCAL_TEST_RESULTS_20260924.md) captures the original page-link and Stats Governance handoff test; its fullness rebuild predates the current behavior.

@@ -106,14 +106,12 @@ PRINT 'PAGE_FULLNESS preview';
 EXEC StatsGovernanceTest.dbo.usp_DefragIndexes
     @Targets = N'[{"database":"AdventureWorks2019","schema":"dbo","table":"DefragGovernanceDemo","index":"IX_DefragGovernanceDemo_Fullness"}]',
     @Criterion = 'PAGE_FULLNESS',
-    @MinPageFullness = 99.99,
     @MinPageCount = 100;
 
 PRINT 'PAGE_FULLNESS execution';
 EXEC StatsGovernanceTest.dbo.usp_DefragIndexes
     @Targets = N'[{"database":"AdventureWorks2019","schema":"dbo","table":"DefragGovernanceDemo","index":"IX_DefragGovernanceDemo_Fullness"}]',
     @Criterion = 'PAGE_FULLNESS',
-    @MinPageFullness = 99.99,
     @MinPageCount = 100,
     @Execute = 1;
 
