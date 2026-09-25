@@ -2,7 +2,9 @@
 
 ## What this process is for
 
-This process helps a DBA maintain SQL Server rowstore indexes when their pages have become sparsely filled or out of logical order. You can preview an entire instance or focus on selected databases, tables, or indexes, then run only the qualifying work. It measures each eligible index partition, chooses a reorganize or rebuild, and reports what it planned or did. After a reorganize, it can optionally hand index statistics decisions to the separate Stats Governance process.
+This process helps a DBA maintain SQL Server rowstore indexes using one criterion per run. `PAGE_FULLNESS` finds index partitions whose leaf pages are sparsely filled on average. The same data then occupies more pages, which can increase reads and memory use. By default, partitions below 90% average fullness qualify for reorganization.
+
+`PAGE_LINK` finds leaf pages that are out of logical key order. By default, qualifying partitions are reorganized at 5% through 30% link fragmentation and rebuilt above 30%. You can preview an entire instance or focus on selected databases, tables, or indexes, then run only the qualifying work. The process reports what it planned or did. After a reorganization under either criterion, it can optionally hand index statistics decisions to the separate Stats Governance process.
 
 ## Why choose page fullness or page link fragmentation?
 
