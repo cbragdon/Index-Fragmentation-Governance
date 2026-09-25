@@ -24,6 +24,28 @@ sqlcmd -S YourServer -d YourAdminDatabase -E -b -i .\sql\usp_DefragIndexes.sql
 
 The caller needs visibility into the selected databases, `VIEW DATABASE STATE` to read `sys.dm_db_index_physical_stats`, and `ALTER` permission on the selected tables to execute maintenance. A DBA login with appropriate rights is the simplest operator. The procedure must run outside an explicit transaction.
 
+### Install Stats Governance for post-reorganize statistics updates
+
+An index rebuild refreshes its own index statistic, but an index reorganize does not. To let this process evaluate and update eligible index statistics after a successful reorganize, separately install [Stats Governance](https://github.com/cbragdon/StatsGovernance). This repository does not install its objects.
+
+1. Clone the Stats Governance repository and follow its [installation instructions](https://github.com/cbragdon/StatsGovernance#install). Choose an existing utility database, such as `DBAdmin` (the Stats Governance example database), at compatibility level 110 or higher. From a directory where you want the repository, for example:
+
+   ```powershell
+   git clone https://github.com/cbragdon/StatsGovernance.git
+   powershell.exe -ExecutionPolicy Bypass -File .\StatsGovernance\scripts\00_Install.ps1 `
+       -Server YourServer -Database DBAdmin
+   ```
+
+   Use the server, utility database, authentication, and certificate options described by Stats Governance for your environment.
+2. Confirm that `dbo.usp_DRE_StatsGovernanceTargeted_v1` exists in that utility database:
+
+   ```sql
+   SELECT OBJECT_ID(N'DBAdmin.dbo.usp_DRE_StatsGovernanceTargeted_v1', N'P') AS targeted_procedure_id;
+   ```
+
+   Replace `DBAdmin` with the database you chose. A non-`NULL` result confirms the targeted procedure is installed.
+3. When running this defrag procedure, set `@StatsGovernanceDatabase` to that utility database. Use `@StatsGovernanceMode = 'RECOMMEND'` to review decisions or `'ENFORCE'` to allow eligible statistics updates after successful reorganizations. `ENFORCE` still obeys Stats Governance's approval and eligibility rules, so a handoff does not guarantee that every reorganized index statistic will be updated. The default mode, `NONE`, performs no handoff.
+
 ## Choose scope
 
 Leave `@Targets` null for every eligible user database. Otherwise, pass a JSON array of selectors. Each selector requires a database; schema, table, and index narrow the selection. Selectors can be mixed and overlapping selectors are handled once.
