@@ -6,7 +6,7 @@
 */
 CREATE OR ALTER PROCEDURE dbo.usp_DefragIndexes
     @Targets nvarchar(max) = NULL,
-    @Criterion varchar(16) = 'EITHER',
+    @Criterion varchar(16),
     @MinPageFullness decimal(5,2) = 75.00,
     @MinLinkFragmentation decimal(5,2) = 10.00,
     @RebuildAtFragmentation decimal(5,2) = 30.00,
@@ -21,8 +21,8 @@ AS
 BEGIN
     SET NOCOUNT ON;
 
-    IF @Criterion NOT IN ('EITHER', 'PAGE_FULLNESS', 'PAGE_LINK')
-        THROW 50001, 'Criterion must be EITHER, PAGE_FULLNESS, or PAGE_LINK.', 1;
+    IF @Criterion IS NULL OR @Criterion NOT IN ('PAGE_FULLNESS', 'PAGE_LINK')
+        THROW 50001, 'Criterion must be PAGE_FULLNESS or PAGE_LINK.', 1;
     IF @MinPageFullness <= 0 OR @MinPageFullness > 100 OR @MinPageFullness IS NULL
         THROW 50002, 'MinPageFullness must be greater than 0 and at most 100.', 1;
     IF @MinLinkFragmentation < 0 OR @MinLinkFragmentation > 100 OR @MinLinkFragmentation IS NULL
@@ -221,14 +221,11 @@ BEGIN
                        pc.partition_count, ps.page_count,
                        CONVERT(decimal(5,2), ps.avg_page_space_used_in_percent),
                        CONVERT(decimal(5,2), ps.avg_fragmentation_in_percent),
-                       CASE WHEN (@Criterion <> ''PAGE_LINK'' AND density_match = 1)
+                       CASE WHEN @Criterion = ''PAGE_FULLNESS''
                                       OR i.allow_page_locks = 0
                                       OR ps.avg_fragmentation_in_percent >= @RebuildAt
                             THEN ''REBUILD'' ELSE ''REORGANIZE'' END,
-                       CASE WHEN @Criterion = ''EITHER'' AND density_match = 1 AND link_match = 1 THEN ''BOTH''
-                            WHEN @Criterion = ''PAGE_FULLNESS'' OR
-                                 (@Criterion = ''EITHER'' AND density_match = 1) THEN ''PAGE_FULLNESS''
-                            ELSE ''PAGE_LINK'' END
+                       @Criterion
                 FROM #SelectedIndexes AS selected
                 JOIN sys.indexes AS i ON i.object_id = selected.object_id AND i.index_id = selected.index_id
                 JOIN sys.tables AS t ON t.object_id = i.object_id
@@ -236,20 +233,14 @@ BEGIN
                 JOIN partition_counts AS pc ON pc.object_id = i.object_id AND pc.index_id = i.index_id
                 CROSS APPLY sys.dm_db_index_physical_stats(DB_ID(), selected.object_id,
                     selected.index_id, NULL, ''SAMPLED'') AS ps
-                CROSS APPLY
-                (
-                    SELECT CASE WHEN ps.avg_page_space_used_in_percent < @MinFullness
-                                       AND (i.fill_factor = 0 OR i.fill_factor >= @MinFullness)
-                                THEN 1 ELSE 0 END AS density_match,
-                           CASE WHEN ps.avg_fragmentation_in_percent >= @MinLink
-                                THEN 1 ELSE 0 END AS link_match
-                ) AS criteria
                 WHERE ps.index_level = 0
                   AND ps.alloc_unit_type_desc = ''IN_ROW_DATA''
                   AND ps.page_count >= @MinPages
-                  AND ((@Criterion = ''EITHER'' AND (density_match = 1 OR link_match = 1))
-                    OR (@Criterion = ''PAGE_FULLNESS'' AND density_match = 1)
-                    OR (@Criterion = ''PAGE_LINK'' AND link_match = 1));';
+                  AND ((@Criterion = ''PAGE_FULLNESS''
+                        AND ps.avg_page_space_used_in_percent < @MinFullness
+                        AND (i.fill_factor = 0 OR i.fill_factor >= @MinFullness))
+                    OR (@Criterion = ''PAGE_LINK''
+                        AND ps.avg_fragmentation_in_percent >= @MinLink));';
 
             EXEC sys.sp_executesql @Sql,
                 N'@DbName sysname, @MinFullness decimal(5,2), @MinLink decimal(5,2),

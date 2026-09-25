@@ -8,9 +8,9 @@ This process helps a DBA maintain SQL Server rowstore indexes when their pages h
 
 - **Page fullness** (`PAGE_FULLNESS`) asks how much of each index page contains data. Choose it when low fullness makes the same data occupy more pages. More pages can mean more reads and more memory to cache them, even when the pages are in order. For example, an index that is 70% full with 2% link fragmentation has a fullness issue. This process rebuilds an index that qualifies on fullness.
 - **Page link fragmentation** (`PAGE_LINK`) asks whether leaf pages follow the index's logical key order. Choose it when an important workload scans many pages or reads key ranges and out-of-order pages may reduce efficient read-ahead. For example, an index that is 95% full with 20% link fragmentation has a page-order issue. This process reorganizes at moderate fragmentation and rebuilds at higher fragmentation.
-- **Either** (`EITHER`) checks both measures and acts when either qualifies. This is the default when you want one maintenance run to consider both conditions.
+Choose one criterion for each run. To investigate both conditions, preview or run the procedure separately with each choice.
 
-“Page link fragmentation” means out-of-order pages; it does not mean damaged page pointers. The default qualification thresholds are below 75% page fullness or at least 10% link fragmentation, with rebuild at 30% link fragmentation. These are configurable process settings, not universal performance targets. A percentage alone does not prove that maintenance will help: compare the before and after measurements and the performance of the queries that use the index. Microsoft notes that low page density often has a greater impact than fragmentation, while fragmentation mainly affects large scans. See [Microsoft's index maintenance guidance](https://learn.microsoft.com/en-us/sql/relational-databases/indexes/reorganize-and-rebuild-indexes?view=sql-server-ver17).
+“Page link fragmentation” means out-of-order pages; it does not mean damaged page pointers. The default qualification thresholds are below 75% page fullness for a fullness run, or at least 10% link fragmentation for a link run, with rebuild at 30% link fragmentation. These are configurable process settings, not universal performance targets. A percentage alone does not prove that maintenance will help: compare the before and after measurements and the performance of the queries that use the index. Microsoft notes that low page density often has a greater impact than fragmentation, while fragmentation mainly affects large scans. See [Microsoft's index maintenance guidance](https://learn.microsoft.com/en-us/sql/relational-databases/indexes/reorganize-and-rebuild-indexes?view=sql-server-ver17).
 
 `sql/usp_DefragIndexes.sql` installs `dbo.usp_DefragIndexes` in an administration database. It scans online, writable user databases on the current SQL Server instance and plans maintenance for rowstore index partitions. It excludes system databases, snapshots, heaps, columnstore indexes, disabled indexes, and small partitions.
 
@@ -29,30 +29,31 @@ The caller needs visibility into the selected databases, `VIEW DATABASE STATE` t
 Leave `@Targets` null for every eligible user database. Otherwise, pass a JSON array of selectors. Each selector requires a database; schema, table, and index narrow the selection. Selectors can be mixed and overlapping selectors are handled once.
 
 ```sql
--- Preview the entire instance (the default).
-EXEC dbo.usp_DefragIndexes;
+-- Preview the entire instance for page link fragmentation.
+EXEC dbo.usp_DefragIndexes @Criterion = 'PAGE_LINK';
 
 -- Preview selected databases.
 EXEC dbo.usp_DefragIndexes
-    @Targets = N'[{"database":"Sales"},{"database":"Warehouse"}]';
+    @Targets = N'[{"database":"Sales"},{"database":"Warehouse"}]',
+    @Criterion = 'PAGE_LINK';
 
 -- Preview a table and one index on a different table.
 EXEC dbo.usp_DefragIndexes
     @Targets = N'[
       {"database":"Sales","schema":"dbo","table":"Orders"},
       {"database":"Sales","schema":"dbo","table":"OrderLines","index":"IX_OrderLines_OrderId"}
-    ]';
+    ]',
+    @Criterion = 'PAGE_FULLNESS';
 ```
 
 ## Choose criterion
 
-Set `@Criterion` to `PAGE_FULLNESS`, `PAGE_LINK`, or `EITHER` (default). The procedure reads the leaf level `IN_ROW_DATA` metrics from `sys.dm_db_index_physical_stats` in `SAMPLED` mode.
+Set the required `@Criterion` to either `PAGE_FULLNESS` or `PAGE_LINK`. The procedure reads the leaf level `IN_ROW_DATA` metrics from `sys.dm_db_index_physical_stats` in `SAMPLED` mode.
 
 | Criterion | Qualifies when | Planned action |
 | --- | --- | --- |
 | `PAGE_FULLNESS` | Average page space used is below `@MinPageFullness` (default 75%) | Rebuild |
 | `PAGE_LINK` | Logical fragmentation is at least `@MinLinkFragmentation` (default 10%) | Reorganize below `@RebuildAtFragmentation` (default 30%); rebuild at or above it |
-| `EITHER` | Either test qualifies | Rebuild if fullness qualifies or link fragmentation reaches the rebuild threshold; otherwise reorganize |
 
 `PAGE_LINK` is SQL Server's logical page order fragmentation, reported as `avg_fragmentation_in_percent`. Page fullness is `avg_page_space_used_in_percent`. A partition must also have at least `@MinPageCount` pages (default 1,000). An index with a configured fill factor below `@MinPageFullness` is exempt from the fullness test because rebuilding it preserves that fill factor and would predictably leave it below the requested target. Indexes that disallow page locks are rebuilt instead of reorganized.
 
