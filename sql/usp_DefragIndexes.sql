@@ -7,8 +7,8 @@
 CREATE OR ALTER PROCEDURE dbo.usp_DefragIndexes
     @Targets nvarchar(max) = NULL,
     @Criterion varchar(16),
-    @MinPageFullness decimal(5,2) = 75.00,
-    @MinLinkFragmentation decimal(5,2) = 10.00,
+    @MinPageFullness decimal(5,2) = 80.00,
+    @MinLinkFragmentation decimal(5,2) = 5.00,
     @RebuildAtFragmentation decimal(5,2) = 30.00,
     @MinPageCount int = 1000,
     @MaxOperations int = NULL,
@@ -223,7 +223,7 @@ BEGIN
                        CONVERT(decimal(5,2), ps.avg_fragmentation_in_percent),
                        CASE WHEN @Criterion = ''PAGE_FULLNESS''
                                       OR i.allow_page_locks = 0
-                                      OR ps.avg_fragmentation_in_percent >= @RebuildAt
+                                      OR ps.avg_fragmentation_in_percent > @RebuildAt
                             THEN ''REBUILD'' ELSE ''REORGANIZE'' END,
                        @Criterion
                 FROM #SelectedIndexes AS selected
