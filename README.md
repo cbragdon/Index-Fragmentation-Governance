@@ -1,5 +1,17 @@
 # SQL Server index defrag
 
+## What this process is for
+
+This process helps a DBA maintain SQL Server rowstore indexes when their pages have become sparsely filled or out of logical order. You can preview an entire instance or focus on selected databases, tables, or indexes, then run only the qualifying work. It measures each eligible index partition, chooses a reorganize or rebuild, and reports what it planned or did. After a reorganize, it can optionally hand index statistics decisions to the separate Stats Governance process.
+
+## Why choose page fullness or page link fragmentation?
+
+- **Page fullness** (`PAGE_FULLNESS`) asks how much of each index page contains data. Choose it when low fullness makes the same data occupy more pages. More pages can mean more reads and more memory to cache them, even when the pages are in order. For example, an index that is 70% full with 2% link fragmentation has a fullness issue. This process rebuilds an index that qualifies on fullness.
+- **Page link fragmentation** (`PAGE_LINK`) asks whether leaf pages follow the index's logical key order. Choose it when an important workload scans many pages or reads key ranges and out-of-order pages may reduce efficient read-ahead. For example, an index that is 95% full with 20% link fragmentation has a page-order issue. This process reorganizes at moderate fragmentation and rebuilds at higher fragmentation.
+- **Either** (`EITHER`) checks both measures and acts when either qualifies. This is the default when you want one maintenance run to consider both conditions.
+
+“Page link fragmentation” means out-of-order pages; it does not mean damaged page pointers. The default qualification thresholds are below 75% page fullness or at least 10% link fragmentation, with rebuild at 30% link fragmentation. These are configurable process settings, not universal performance targets. A percentage alone does not prove that maintenance will help: compare the before and after measurements and the performance of the queries that use the index. Microsoft notes that low page density often has a greater impact than fragmentation, while fragmentation mainly affects large scans. See [Microsoft's index maintenance guidance](https://learn.microsoft.com/en-us/sql/relational-databases/indexes/reorganize-and-rebuild-indexes?view=sql-server-ver17).
+
 `sql/usp_DefragIndexes.sql` installs `dbo.usp_DefragIndexes` in an administration database. It scans online, writable user databases on the current SQL Server instance and plans maintenance for rowstore index partitions. It excludes system databases, snapshots, heaps, columnstore indexes, disabled indexes, and small partitions.
 
 ## Install
@@ -51,7 +63,7 @@ EXEC dbo.usp_DefragIndexes
     @Criterion = 'PAGE_FULLNESS',
     @MinPageFullness = 80;
 
--- Preview indexes with broken page links in one table.
+-- Preview indexes with out-of-order pages in one table.
 EXEC dbo.usp_DefragIndexes
     @Targets = N'[{"database":"Sales","schema":"dbo","table":"Orders"}]',
     @Criterion = 'PAGE_LINK',
